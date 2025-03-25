@@ -336,12 +336,12 @@ static double cubic(double time,     ///< Current time
 }
 
 static double cubicDot(double time,     ///< Current time
-             double time_0,   ///< Start time
-             double time_f,   ///< End time
-             double x_0,      ///< Start state
-             double x_f,      ///< End state
-             double x_dot_0,  ///< Start state dot
-             double x_dot_f   ///< End state dot
+             double time_0,             ///< Start time
+             double time_f,             ///< End time
+             double x_0,                ///< Start state
+             double x_f,                ///< End state
+             double x_dot_0,            ///< Start state dot
+             double x_dot_f             ///< End state dot
              )
 {
   double x_dot_t;
@@ -592,8 +592,8 @@ static Eigen::Vector3d getPhi(Eigen::Matrix3d current_rotation,
   Eigen::Vector3d s[3], v[3], w[3];
 
   for (int i = 0; i < 3; i++) {
-    v[i] = current_rotation.block<3, 1>(0, i);
-    w[i] = desired_rotation.block<3, 1>(0, i);
+    v[i] = current_rotation.col(i);
+    w[i] = desired_rotation.col(i);
     s[i] = v[i].cross(w[i]);
   }
   phi = s[0] + s[1] + s[2];

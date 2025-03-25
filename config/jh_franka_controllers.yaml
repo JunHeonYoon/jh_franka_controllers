@@ -1,6 +1,5 @@
-
 default_controller:
-    type: jh_franka_controllers/default_controller
+    type: jh_franka_controllers/DefaultController
     arm_id: panda
     joint_names:
         - panda_joint1

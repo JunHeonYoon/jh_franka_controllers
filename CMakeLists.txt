@@ -47,14 +47,11 @@ catkin_package(
     controller_interface
     dynamic_reconfigure
     franka_hw
-    nav_msgs
     geometry_msgs
     hardware_interface
     pluginlib
     realtime_tools
     roscpp
-    tf2 
-    tf2_ros
   DEPENDS Franka
 )
 
