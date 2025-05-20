@@ -606,7 +606,7 @@ void {1}::setMode(const CTRL_MODE& mode)
 
 {6}
 
-Eigen::VectorXd ex1::LowPassFilter(const Eigen::VectorXd &input, const Eigen::VectorXd &prev_res, const double &sampling_freq, const double &cutoff_freq)
+Eigen::VectorXd {1}::LowPassFilter(const Eigen::VectorXd &input, const Eigen::VectorXd &prev_res, const double &sampling_freq, const double &cutoff_freq)
 {{
   double rc = 1. / (cutoff_freq * 2 * M_PI);
   double dt = 1. / sampling_freq;
