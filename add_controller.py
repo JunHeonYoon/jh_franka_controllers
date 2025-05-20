@@ -340,7 +340,6 @@ Eigen::Vector7d {0}::JointPDControl(const Eigen::Vector7d target_q)
 
         make_file('src/{0}.cpp'.format(convert(controller_name)),
 """
-
 #include <{0}/{2}.h>
 
 namespace {0}
@@ -417,6 +416,7 @@ void {1}::starting(const ros::Time& time)
 {{
   updateRobotData();
   start_time_ = time;
+  play_time_ = time;
   q_init_ = q_;
   qdot_init_ = qdot_;
   q_desired_ = q_init_;
@@ -426,9 +426,9 @@ void {1}::starting(const ros::Time& time)
   rotation_init_ = rotation_;
 }}
 
-void {1}::update(const ros::Time& time, const ros::Duration& period) 
+void {1}::update(const ros::Time& /* time */, const ros::Duration& period) 
 {{
-  play_time_ = time;
+  play_time_ += period;
   updateRobotData();
 
   if (calculation_mutex_.try_lock())
@@ -607,12 +607,12 @@ void {1}::setMode(const CTRL_MODE& mode)
 {6}
 
 Eigen::VectorXd ex1::LowPassFilter(const Eigen::VectorXd &input, const Eigen::VectorXd &prev_res, const double &sampling_freq, const double &cutoff_freq)
-{
+{{
   double rc = 1. / (cutoff_freq * 2 * M_PI);
   double dt = 1. / sampling_freq;
   double a = dt / (rc + dt);
   return prev_res + a * (input - prev_res);
-}
+}}
 }} // namespace {0}
 
 
