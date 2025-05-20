@@ -2,6 +2,7 @@
 
 import fileinput,re  
 import sys
+import argparse
 
 package_name = "jh_franka_controllers" 
 
@@ -31,16 +32,38 @@ def make_file(file_name, value):
     f.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("How to use")
-        print(sys.argv[0], "ControllerName")
-    elif len(sys.argv) == 2:
-        controller_name = sys.argv[1]
-        print("making controller:", controller_name)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--controller_name", type=str, 
+                                        required=True, 
+                                        help="Name of Controller")
 
+    parser.add_argument("--robot_ip", type=str, 
+                                      required=True, 
+                                      help="Robot IP")
+
+    parser.add_argument("--control_mode", type=str, 
+                                          required=True, 
+                                          help="Control Mode [position, velocity, torque]")
+
+    args = parser.parse_args()
+
+    controller_name = args.controller_name
+    robot_ip = args.robot_ip
+    control_mode = args.control_mode
+
+    if control_mode not in ["position", "velocity", "torque"]:
+        print(f"Control Mode must be [position, velocity, torque]! Input is {control_mode}")
+    else:
+        interface_type = {
+            "position": "hardware_interface::PositionJointInterface",
+            "velocity": "hardware_interface::VelocityJointInterface",
+            "torque"  : "hardware_interface::EffortJointInterface"
+        }[control_mode] 
+        
         modify_file("CMakeLists.txt",
                    "add_library\(\$\{PROJECT_NAME\}",
                    "src/" + convert(controller_name) + ".cpp", True)
+        
         modify_file(package_name + "_plugin.xml",
                    "\</library\>",
                    "  <class name=\"" + package_name + "/" + controller_name + "\" type=\"" + package_name + "::" + controller_name + """\" base_class_type=\"controller_interface::ControllerBase\">
@@ -65,7 +88,7 @@ if __name__ == "__main__":
         make_file("launch/{0}.launch".format(convert(controller_name)),
 """<?xml version="1.0" ?>
 <launch>
-  <arg name="robot_ip" default="172.16.2.2" />
+  <arg name="robot_ip" default="{2}" />
   <arg name="load_gripper" default="true" />
   <include file="$(find franka_control)/launch/franka_control.launch" >
     <arg name="robot_ip" value="$(arg robot_ip)" />
@@ -76,7 +99,78 @@ if __name__ == "__main__":
   <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen"  args="{1}"/>
   <node pkg="rviz" type="rviz" output="screen" name="rviz" args="-d $(find {0})/launch/robot.rviz"/>
 </launch>
-""".format(package_name,convert(controller_name)))
+""".format(package_name,convert(controller_name),robot_ip))
+        
+        is_torque = (control_mode == "torque")
+        robot_data   = """
+  // ====== Joint space data ======
+  // initial state
+  Eigen::Vector7d q_init_;
+  Eigen::Vector7d qdot_init_;
+
+  // current state
+  Eigen::Vector7d q_;
+  Eigen::Vector7d qdot_;
+  Eigen::Vector7d torque_;
+
+  // control value
+  Eigen::Vector7d q_desired_;
+  Eigen::Vector7d qdot_desired_;
+  Eigen::Vector7d torque_desired_;
+
+
+  // Dynamics
+  Eigen::Matrix7d M_;
+  Eigen::Matrix7d M_inv_;
+  Eigen::Vector7d c_;
+  Eigen::Vector7d g_;
+
+  // ====== Task space data =======
+  // initial state
+  Eigen::Vector3d x_init_;
+  Eigen::Vector6d xdot_init_;
+  Eigen::Matrix3d rotation_init_;
+
+  // current state
+  Eigen::Vector3d x_;
+  Eigen::Vector6d xdot_;
+  Eigen::Matrix3d rotation_;
+  Eigen::Matrix<double, 6, 7> J_;
+
+  // Dynamics
+  Eigen::Matrix6d M_task_;
+  Eigen::Vector6d g_task_;
+  Eigen::Matrix<double, 6, 7> J_T_inv_;
+        """ if is_torque else """
+  // ====== Joint space data ======
+  // initial state
+  Eigen::Vector7d q_init_;
+  Eigen::Vector7d qdot_init_;
+
+  // current state
+  Eigen::Vector7d q_;
+  Eigen::Vector7d qdot_;
+  Eigen::Vector7d torque_;
+
+  // control value
+  Eigen::Vector7d q_desired_;
+  Eigen::Vector7d qdot_desired_;          
+
+  // ====== Task space data =======
+  // initial state
+  Eigen::Vector3d x_init_;
+  Eigen::Vector6d xdot_init_;
+  Eigen::Matrix3d rotation_init_;
+
+  // current state
+  Eigen::Vector3d x_;
+  Eigen::Vector6d xdot_;
+  Eigen::Matrix3d rotation_;
+  Eigen::Matrix<double, 6, 7> J_;
+"""
+
+        pd_controller_h = "Eigen::Vector7d JointPDControl(const Eigen::Vector7d target_q);"if is_torque else""
+
         make_file('include/{0}/{1}.h'.format(package_name,convert(controller_name)),
 """
 
@@ -117,7 +211,7 @@ namespace {0}
 
 class {1} : public controller_interface::MultiInterfaceController<
 								   franka_hw::FrankaModelInterface,
-								   hardware_interface::EffortJointInterface,
+								   {2},
 								   franka_hw::FrankaStateInterface> {{
                      
   bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& node_handle) override;
@@ -135,43 +229,7 @@ class {1} : public controller_interface::MultiInterfaceController<
   // ========================================================================
   // =========================== Franka robot Data ==========================
   // ========================================================================
-  // ====== Joint space data ======
-  // initial state
-  Eigen::Vector7d q_init_;
-  Eigen::Vector7d qdot_init_;
-
-  // current state
-  Eigen::Vector7d q_;
-  Eigen::Vector7d qdot_;
-  Eigen::Vector7d torque_;
-
-  // control value
-  Eigen::Vector7d q_desired_;
-  Eigen::Vector7d qdot_desired_;
-  Eigen::Vector7d torque_desired_;
-
-  // Dynamics
-  Eigen::Matrix7d M_;
-  Eigen::Matrix7d M_inv_;
-  Eigen::Vector7d c_;
-  Eigen::Vector7d g_;
-
-  // ====== Task space data =======
-  // initial state
-  Eigen::Vector3d x_init_;
-  Eigen::Vector6d xdot_init_;
-  Eigen::Matrix3d rotation_init_;
-
-  // current state
-  Eigen::Vector3d x_;
-  Eigen::Vector6d xdot_;
-  Eigen::Matrix3d rotation_;
-  Eigen::Matrix<double, 6, 7> J_;
-
-  // Dynamics
-  Eigen::Matrix6d M_task_;
-  Eigen::Vector6d g_task_;
-  Eigen::Matrix<double, 6, 7> J_T_inv_;
+  {3}
 
   // ========================================================================
   // ============================ Mutex & Thread ============================
@@ -214,11 +272,71 @@ class {1} : public controller_interface::MultiInterfaceController<
   void printRobotData();
   int kbhit(void);
   void setMode(const CTRL_MODE& mode);
-  Eigen::Vector7d JointPDControl(const Eigen::Vector7d target_q);
+  {4}
 }};
 
 }}  // namespace {0}
-""".format(package_name,controller_name))
+""".format(package_name,controller_name,interface_type,robot_data,pd_controller_h))
+        
+        update_robot_data   = """
+  const franka::RobotState &robot_state = state_handle_->getRobotState();
+  const std::array<double, 42> &jacobian_array = model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
+  const std::array<double, 7> &gravity_array = model_handle_->getGravity();
+  const std::array<double, 49> &massmatrix_array = model_handle_->getMass();
+  const std::array<double, 7> &coriolis_array = model_handle_->getCoriolis();
+  {
+    std::lock_guard<std::mutex> lock(robot_data_mutex_);
+    q_ = Eigen::Map<const Eigen::Vector7d>(robot_state.q.data());
+    qdot_ = Eigen::Map<const Eigen::Vector7d>(robot_state.dq.data());
+    torque_ = Eigen::Map<const Eigen::Vector7d>(robot_state.tau_J.data());
+    M_ = Eigen::Map<const Eigen::Matrix7d>(massmatrix_array.data());
+    M_inv_ = M_.inverse();
+    g_ = Eigen::Map<const Eigen::Vector7d>(gravity_array.data());
+    c_ = Eigen::Map<const Eigen::Vector7d>(coriolis_array.data());
+
+    Eigen::Affine3d transform;
+    transform.matrix() = Eigen::Matrix4d::Map(robot_state.O_T_EE.data());  
+    x_ = transform.translation();
+    rotation_ = transform.rotation();
+    J_ = Eigen::Map<const Eigen::Matrix<double, 6, 7>>(jacobian_array.data());
+    xdot_ = J_ * qdot_;
+    M_task_ = (J_ * M_inv_ * J_.transpose()).inverse();
+    J_T_inv_ = M_task_ * J_ * M_inv_;
+    g_task_ = J_T_inv_ * g_;
+  }
+""" if is_torque else """
+  const franka::RobotState &robot_state = state_handle_->getRobotState();
+  const std::array<double, 42> &jacobian_array = model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
+  {
+    std::lock_guard<std::mutex> lock(robot_data_mutex_);
+    q_ = Eigen::Map<const Eigen::Vector7d>(robot_state.q.data());
+    qdot_ = Eigen::Map<const Eigen::Vector7d>(robot_state.dq.data());
+
+    Eigen::Affine3d transform;
+    transform.matrix() = Eigen::Matrix4d::Map(robot_state.O_T_EE.data());  
+    x_ = transform.translation();
+    rotation_ = transform.rotation();
+    J_ = Eigen::Map<const Eigen::Matrix<double, 6, 7>>(jacobian_array.data());
+    xdot_ = J_ * qdot_;
+  }
+"""
+
+        send_cmd = "joint_handles_[i].setCommand(torque_desired_(i));" if is_torque else "joint_handles_[i].setCommand(q_desired_(i));" if control_mode=="position" else "joint_handles_[i].setCommand(qdot_desired_(i));"
+
+        pd_controller = """
+Eigen::Vector7d {0}::JointPDControl(const Eigen::Vector7d target_q)
+{{
+  double kp, kv;
+  kp = 1500;
+  kv = 10;
+
+  return M_ * (kp * (target_q - q_) + kv * (-qdot_)) + c_;
+}}
+""".format(controller_name) if is_torque else""
+        
+        cmd_1 = "torque_desired_ = JointPDControl(q_desired_);" if is_torque else ""
+        cmd_2 = "torque_desired_ = c_;" if is_torque else "q_desired_ = q_init_;" if control_mode=="position" else "qdot_desired_ = Eigen::VectorXd::Zero(7);"
+
         make_file('src/{0}.cpp'.format(convert(controller_name)),
 """
 
@@ -234,22 +352,22 @@ bool {1}::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& node_hand
 	std::vector<std::string> joint_names;
   std::string arm_id;
   ROS_WARN(
-      "ForceExampleController: Make sure your robot's endeffector is in contact "
+      "{1}: Make sure your robot's endeffector is in contact "
       "with a horizontal surface before starting the controller!");
   if (!node_handle.getParam("arm_id", arm_id)) {{
-    ROS_ERROR("ForceExampleController: Could not read parameter arm_id");
+    ROS_ERROR("{1}: Could not read parameter arm_id");
     return false;
   }}
   if (!node_handle.getParam("joint_names", joint_names) || joint_names.size() != 7) {{
     ROS_ERROR(
-        "ForceExampleController: Invalid or no joint_names parameters provided, aborting "
+        "{1}: Invalid or no joint_names parameters provided, aborting "
         "controller init!");
     return false;
   }}
 
   auto* model_interface = robot_hw->get<franka_hw::FrankaModelInterface>();
   if (model_interface == nullptr) {{
-    ROS_ERROR_STREAM("ForceExampleController: Error getting model interface from hardware");
+    ROS_ERROR_STREAM("{1}: Error getting model interface from hardware");
     return false;
   }}
   try {{
@@ -257,13 +375,13 @@ bool {1}::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& node_hand
         model_interface->getHandle(arm_id + "_model"));
   }} catch (hardware_interface::HardwareInterfaceException& ex) {{
     ROS_ERROR_STREAM(
-        "ForceExampleController: Exception getting model handle from interface: " << ex.what());
+        "{1}: Exception getting model handle from interface: " << ex.what());
     return false;
   }}
 
   auto* state_interface = robot_hw->get<franka_hw::FrankaStateInterface>();
   if (state_interface == nullptr) {{
-    ROS_ERROR_STREAM("ForceExampleController: Error getting state interface from hardware");
+    ROS_ERROR_STREAM("{1}: Error getting state interface from hardware");
     return false;
   }}
   try {{
@@ -271,20 +389,20 @@ bool {1}::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& node_hand
         state_interface->getHandle(arm_id + "_robot"));
   }} catch (hardware_interface::HardwareInterfaceException& ex) {{
     ROS_ERROR_STREAM(
-        "ForceExampleController: Exception getting state handle from interface: " << ex.what());
+        "{1}: Exception getting state handle from interface: " << ex.what());
     return false;
   }}
 
-  auto* effort_joint_interface = robot_hw->get<hardware_interface::EffortJointInterface>();
-  if (effort_joint_interface == nullptr) {{
-    ROS_ERROR_STREAM("ForceExampleController: Error getting effort joint interface from hardware");
+  auto* joint_interface = robot_hw->get<{3}>();
+  if (joint_interface == nullptr) {{
+    ROS_ERROR_STREAM("{1}: Error getting effort joint interface from hardware");
     return false;
   }}
   for (size_t i = 0; i < 7; ++i) {{
     try {{
-      joint_handles_.push_back(effort_joint_interface->getHandle(joint_names[i]));
+      joint_handles_.push_back(joint_interface->getHandle(joint_names[i]));
     }} catch (const hardware_interface::HardwareInterfaceException& ex) {{
-      ROS_ERROR_STREAM("ForceExampleController: Exception getting joint handles: " << ex.what());
+      ROS_ERROR_STREAM("{1}: Exception getting joint handles: " << ex.what());
       return false;
     }}
   }}
@@ -393,11 +511,19 @@ void {1}::asyncCalculationProc()
                                            Eigen::Vector7d::Zero(),
                                            Eigen::Vector7d::Zero()
                                            );
-    torque_desired_ = JointPDControl(q_desired_);
+    qdot_desired_ = DyrosMath::cubicDotVector<7>(play_time_.toSec(), 
+                                                 control_start_time_.toSec(),
+                                                 control_start_time_.toSec() + 4.,
+                                                 q_init_,
+                                                 target_q,
+                                                 Eigen::Vector7d::Zero(),
+                                                 Eigen::Vector7d::Zero()
+                                                 );
+    {7}
   }}
   else
   {{
-    torque_desired_ = c_;
+    {8}
   }}
   }}
   calculation_cv_.notify_one();
@@ -408,39 +534,14 @@ void {1}::asyncCalculationProc()
 // ================================================================================================	
 void {1}::updateRobotData()
 {{
-  const franka::RobotState &robot_state = state_handle_->getRobotState();
-  const std::array<double, 42> &jacobian_array =
-      model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
-  const std::array<double, 7> &gravity_array = model_handle_->getGravity();
-  const std::array<double, 49> &massmatrix_array = model_handle_->getMass();
-  const std::array<double, 7> &coriolis_array = model_handle_->getCoriolis();
-  {{
-    std::lock_guard<std::mutex> lock(robot_data_mutex_);
-    q_ = Eigen::Map<const Eigen::Vector7d>(robot_state.q.data());
-    qdot_ = Eigen::Map<const Eigen::Vector7d>(robot_state.dq.data());
-    torque_ = Eigen::Map<const Eigen::Vector7d>(robot_state.tau_J.data());
-    M_ = Eigen::Map<const Eigen::Matrix7d>(massmatrix_array.data());
-    M_inv_ = M_.inverse();
-    g_ = Eigen::Map<const Eigen::Vector7d>(gravity_array.data());
-    c_ = Eigen::Map<const Eigen::Vector7d>(coriolis_array.data());
-
-    Eigen::Affine3d transform;
-    transform.matrix() = Eigen::Matrix4d::Map(robot_state.O_T_EE.data());  
-    x_ = transform.translation();
-    rotation_ = transform.rotation();
-    J_ = Eigen::Map<const Eigen::Matrix<double, 6, 7>>(jacobian_array.data());
-    xdot_ = J_ * qdot_;
-    M_task_ = (J_ * M_inv_ * J_.transpose()).inverse();
-    J_T_inv_ = M_task_ * J_ * M_inv_;
-    g_task_ = J_T_inv_ * g_;
-  }}
+  {4}
 }}
 
 void {1}::sendCmdInput()
 {{
   for (size_t i = 0; i < 7; ++i) 
   {{
-    joint_handles_[i].setCommand(torque_desired_(i));
+    {5}
   }}
 }}
 
@@ -459,8 +560,6 @@ void {1}::printRobotData()
 		std::cout << std::fixed << std::setprecision(3) << qdot_.transpose() << std::endl;
     std::cout << "qdot desired  :\t";
 		std::cout << std::fixed << std::setprecision(3) << qdot_desired_.transpose() << std::endl;
-    std::cout << "torque desired  :\t";
-		std::cout << std::fixed << std::setprecision(3) << torque_desired_.transpose() << std::endl;
 		std::cout << "x             :\t";
 		std::cout << x_.transpose() << std::endl;
 		std::cout << "R             :\t" << std::endl;
@@ -504,14 +603,7 @@ void {1}::setMode(const CTRL_MODE& mode)
   std::cout << "Current mode (changed): " << mode << std::endl;
 }}
 
-Eigen::Vector7d {1}::JointPDControl(const Eigen::Vector7d target_q)
-{{
-  double kp, kv;
-  kp = 1500;
-  kv = 10;
-
-  return M_ * (kp * (target_q - q_) + kv * (-qdot_)) + c_;
-}}
+{6}
 }} // namespace {0}
 
 
@@ -519,4 +611,4 @@ Eigen::Vector7d {1}::JointPDControl(const Eigen::Vector7d target_q)
 PLUGINLIB_EXPORT_CLASS({0}::{1},
                        controller_interface::ControllerBase)
 
-""".format(package_name,controller_name,convert(controller_name)))
+""".format(package_name,controller_name,convert(controller_name),interface_type,update_robot_data,send_cmd,pd_controller,cmd_1,cmd_2))
