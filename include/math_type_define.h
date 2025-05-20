@@ -603,6 +603,32 @@ const static Eigen::Matrix3d rotationCubic(double time,
   return result;
 }
 
+const static Eigen::Vector3d rotationCubicDot(
+		double time, double time_0, double time_f,
+		const Eigen::Vector3d &w_0, const Eigen::Vector3d &a_0,
+		const Eigen::Matrix3d &rotation_0, const Eigen::Matrix3d &rotation_f)
+	{
+		Eigen::Matrix3d r_skew;
+		r_skew = (rotation_0.transpose() * rotation_f).log();
+		Eigen::Vector3d a, b, c, r;
+		double tau = (time - time_0) / (time_f - time_0);
+		r(0) = r_skew(2, 1);
+		r(1) = r_skew(0, 2);
+		r(2) = r_skew(1, 0);
+		c = w_0;
+		b = a_0 / 2;
+		a = r - b - c;
+		Eigen::Vector3d rd;
+		for (int i = 0; i < 3; i++)
+		{
+			rd(i) = cubicDot(time, time_0, time_f, 0, r(i), 0, 0);
+		}
+		rd = rotation_0 * rd;
+		if (tau < 0) return w_0;
+		if (tau > 1) return Eigen::Vector3d::Zero();
+		return rd;//3 * a * pow(tau, 2) + 2 * b * tau + c;
+	}
+
 static Eigen::Vector3d getPhi(Eigen::Matrix3d current_rotation,
                        Eigen::Matrix3d desired_rotation)
 {
