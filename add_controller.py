@@ -273,6 +273,7 @@ class {1} : public controller_interface::MultiInterfaceController<
   int kbhit(void);
   void setMode(const CTRL_MODE& mode);
   {4}
+  Eigen::VectorXd LowPassFilter(const Eigen::VectorXd &input, const Eigen::VectorXd &prev_res, const double &sampling_freq, const double &cutoff_freq);
 }};
 
 }}  // namespace {0}
@@ -604,6 +605,14 @@ void {1}::setMode(const CTRL_MODE& mode)
 }}
 
 {6}
+
+Eigen::VectorXd ex1::LowPassFilter(const Eigen::VectorXd &input, const Eigen::VectorXd &prev_res, const double &sampling_freq, const double &cutoff_freq)
+{
+  double rc = 1. / (cutoff_freq * 2 * M_PI);
+  double dt = 1. / sampling_freq;
+  double a = dt / (rc + dt);
+  return prev_res + a * (input - prev_res);
+}
 }} // namespace {0}
 
 
