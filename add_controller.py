@@ -127,11 +127,13 @@ if __name__ == "__main__":
 
   // ====== Task space data =======
   // initial state
+  Eigen::Affine3d transform_init_;
   Eigen::Vector3d x_init_;
   Eigen::Vector6d xdot_init_;
   Eigen::Matrix3d rotation_init_;
 
   // current state
+  Eigen::Affine3d transform_;
   Eigen::Vector3d x_;
   Eigen::Vector6d xdot_;
   Eigen::Matrix3d rotation_;
@@ -158,11 +160,13 @@ if __name__ == "__main__":
 
   // ====== Task space data =======
   // initial state
+  Eigen::Affine3d transform_init_;
   Eigen::Vector3d x_init_;
   Eigen::Vector6d xdot_init_;
   Eigen::Matrix3d rotation_init_;
 
   // current state
+  Eigen::Affine3d transform_;
   Eigen::Vector3d x_;
   Eigen::Vector6d xdot_;
   Eigen::Matrix3d rotation_;
@@ -295,10 +299,9 @@ class {1} : public controller_interface::MultiInterfaceController<
     g_ = Eigen::Map<const Eigen::Vector7d>(gravity_array.data());
     c_ = Eigen::Map<const Eigen::Vector7d>(coriolis_array.data());
 
-    Eigen::Affine3d transform;
-    transform.matrix() = Eigen::Matrix4d::Map(robot_state.O_T_EE.data());  
-    x_ = transform.translation();
-    rotation_ = transform.rotation();
+    transform_.matrix() = Eigen::Matrix4d::Map(robot_state.O_T_EE.data());  
+    x_ = transform_.translation();
+    rotation_ = transform_.rotation();
     J_ = Eigen::Map<const Eigen::Matrix<double, 6, 7>>(jacobian_array.data());
     xdot_ = J_ * qdot_;
     M_task_ = (J_ * M_inv_ * J_.transpose()).inverse();
@@ -313,10 +316,9 @@ class {1} : public controller_interface::MultiInterfaceController<
     q_ = Eigen::Map<const Eigen::Vector7d>(robot_state.q.data());
     qdot_ = Eigen::Map<const Eigen::Vector7d>(robot_state.dq.data());
 
-    Eigen::Affine3d transform;
-    transform.matrix() = Eigen::Matrix4d::Map(robot_state.O_T_EE.data());  
-    x_ = transform.translation();
-    rotation_ = transform.rotation();
+    transform_.matrix() = Eigen::Matrix4d::Map(robot_state.O_T_EE.data());  
+    x_ = transform_.translation();
+    rotation_ = transform_.rotation();
     J_ = Eigen::Map<const Eigen::Matrix<double, 6, 7>>(jacobian_array.data());
     xdot_ = J_ * qdot_;
   }
@@ -421,6 +423,7 @@ void {1}::starting(const ros::Time& time)
   qdot_init_ = qdot_;
   q_desired_ = q_init_;
   qdot_desired_ = qdot_init_;
+  transform_init_ = transform_;
   x_init_ = x_;
   xdot_init_ = xdot_;
   rotation_init_ = rotation_;
@@ -491,6 +494,7 @@ void {1}::asyncCalculationProc()
       qdot_init_ = qdot_;
       q_desired_ = q_init_;
       qdot_desired_ = qdot_init_;
+      transform_init_ = transform_;
       x_init_ = x_;
       xdot_init_ = xdot_;
       rotation_init_ = rotation_;
